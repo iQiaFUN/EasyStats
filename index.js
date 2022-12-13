@@ -20,15 +20,24 @@ const MONTHLY_LOG_FILE = "MonthLog.json"
 const PLAYER_DATA_FILE = "PlayerData.json"
 const ACU_TMP_DATA_FILE = "ACU_Tmp_Data.json"
 
+const CRON_DAILY = "0 0 5 * * *"
+const CRON_WEEKLY = "15 0 5 * * 1"
+const CRON_MONTHLY = "30 0 5 1 * *"
+const CRON_ACU = "30 */5 * * * *"
+const CRON_CONFIG = {
+    scheduled: false,
+    timezone: "Asia/Shanghai"
+}
+
 let CCU = 0
 let PCU = 0
 let RU = 0
-
+let playerList = new Map()
 
 function init() {
     try {
         fse.ensureDirSync(DIR)
-        logger.info("初始化配置目录成功")
+        logger.info("[INIT] 初始化配置目录成功")
         initFile(DATA_FILE, { RU: 0, PCU: 0 })
         initFile(DAILY_LOG_FILE, [])
         initFile(WEEKLY_LOG_FILE, [])
@@ -37,10 +46,12 @@ function init() {
         initFile(ACU_TMP_DATA_FILE, [])
     } catch (err) {
         logger.debug(err);
-        logger.warn('初始化配置失败');
+        logger.warn('[INIT] 初始化配置失败');
     }
     let data = load(DATA_FILE)
-    PCU = data.PCU
+    let { RU: tmpRU, PCU: tmpPCU } = data
+    RU = tmpRU
+    PCU = tmpPCU
 }
 
 function initFile(file, data) {
@@ -49,13 +60,13 @@ function initFile(file, data) {
         let exists = fse.pathExistsSync(path);
         if (!exists) {
             fse.writeJSONSync(path, data)
-            logger.info(`初始化${file}成功`);
+            logger.info(`[INIT] 初始化${file}成功`);
         } else {
-            logger.info(`检测到${file}`);
+            logger.info(`[INIT] 检测到${file}`);
         }
     } catch (err) {
         logger.debug(err);
-        logger.warn(`${file} 初始化失败`);
+        logger.warn(`[INIT] ${file} 初始化失败`);
     }
 }
 
@@ -107,34 +118,19 @@ function findIndexByXuid(xuid) {//玩家是否存在
     return index >= 0 ? [index, playerData[index]] : [null, playerData];
 }
 
-let dTask = cron.schedule('0 0 5 * *', doDayTask, {
-    scheduled: false,
-    timezone: "Asia/Shanghai"
-});
-
-let wTask = cron.schedule('15 0 5 * * 1', doWeekTask, {
-    scheduled: false,
-    timezone: "Asia/Shanghai"
-});
-
-let mTask = cron.schedule('30 0 5 1 *', doMonthTask, {
-    scheduled: false,
-    timezone: "Asia/Shanghai"
-});
-
-let cuTask = cron.schedule('0 */5 * * *', doCUTask, {
-    scheduled: false,
-    timezone: "Asia/Shanghai"
-});
+let dTask = cron.schedule(CRON_DAILY, doDayTask,CRON_CONFIG);
+let wTask = cron.schedule(CRON_WEEKLY, doWeekTask, CRON_CONFIG);
+let mTask = cron.schedule(CRON_MONTHLY, doMonthTask, CRON_CONFIG);
+let cuTask = cron.schedule(CRON_ACU, doCUTask,CRON_CONFIG);
 
 class Player {
-    constructor(xuid) {
+    constructor(xuid, login_at) {
         this.xuid = xuid
         this.playtime = 0
         this.DOT = 0
         this.WOT = 0
         this.MOT = 0
-        this.last_login_at = new Date().getTime()
+        this.last_login_at = login_at
         this.last_logout_at = new Date().getTime()
         this.created_at = new Date().getTime()
         this.updated_at = new Date().getTime()
@@ -146,7 +142,7 @@ function startTask() {
     dTask.start()
     wTask.start()
     mTask.start()
-    logger.info('定时任务已启动')
+    logger.info('[START] 定时任务已启动')
 }
 
 function stopTask() {
@@ -164,9 +160,9 @@ function doCUTask() {
     }
     let state = insertData(ACU_TMP_DATA_FILE, tmpData)
     if (state) {
-        logger.info(`当前在线玩家数量:${CCU}`)
+        logger.info(`[HEART] 当前在线玩家(CCU):${CCU} 玩家总数(RU):${RU} 最高同时在线(PCU):${PCU} `)
     } else {
-        logger.warn(`更新${ACU_TMP_DATA_FILE}失败`)
+        logger.warn(`[HEART] 更新${ACU_TMP_DATA_FILE}失败`)
     }
 }
 
@@ -227,6 +223,8 @@ function doDayTask() {
     })
     saveData(ACU_TMP_DATA_FILE, [])
     saveData(PLAYER_DATA_FILE, playerData)
+    logger.info(`[DAILY] <昨日数据统计> 活跃数(DAU):${DAU} 新增数(DNU):${DNU} 平均在线人数(ACU):${ACU} 平均在线时长(DAOT):${DAOT} `)
+    //logger.info(`昨日新增玩家:${NEW_USER}`)
     cuTask.start()
 }
 
@@ -240,9 +238,10 @@ function doWeekTask() {
     //     doDayTask.start()
     //     return logger.warn('获取玩家数据失败，日统计数据未更新')
     // }
-    let WAU = 0, WNU = 0, ACU = 0, allCU = 0, WDAOT = 0
+    let WAU = 0, WNU = 0, ACU = 0, allCU = 0, WDAOT = 0, allDOT = 0
     let NEW_USER = []
     for (let index = 0; index < playerData.length; index++) {
+
         let { xuid, WOT, last_login_at, created_at } = playerData[index]
         if (created_at > lwt) {
             WNU += 1
@@ -253,12 +252,14 @@ function doWeekTask() {
             allDOT = allDOT + WOT
         }
         playerData[index].WOT = 0
+
     }
     for (let index = 0; index < dayLogData.length; index++) {
         let { CREATED_AT, ACU, DAOT } = dayLogData[index]
         if (CREATED_AT > lwt) {
-            allCU = allCU + ACU
-            WDAOT = WDAOT + DAOT
+            console.log(22, index)
+            allCU = allCU + parseFloat(ACU)
+            WDAOT = WDAOT + parseFloat(DAOT)
         }
     }
     ACU = (allCU / 7).toFixed(2)
@@ -268,6 +269,7 @@ function doWeekTask() {
         LOCALE_DATE, WAU, WNU, ACU, WDAOT, NEW_USER
     })
     saveData(PLAYER_DATA_FILE, playerData)
+    logger.info(`[WEEKLY] <上周数据统计> 活跃数(WAU):${WAU} 新增数(WNU):${WNU} 平均在线人数(ACU):${ACU} 平均在线时长(WDAOT):${WDAOT} `)
     dTask.start()
 }
 
@@ -281,7 +283,7 @@ function doMonthTask() {
     //     doDayTask.start()
     //     return logger.warn('获取玩家数据失败，日统计数据未更新')
     // }
-    let MAU = 0, MNU = 0, ACU = 0, allCU = 0, MDAOT = 0
+    let MAU = 0, MNU = 0, ACU = 0, allCU = 0, MDAOT = 0, allDOT = 0
     let NEW_USER = []
     for (let index = 0; index < playerData.length; index++) {
         let { xuid, MOT, last_login_at, created_at } = playerData[index]
@@ -297,9 +299,9 @@ function doMonthTask() {
     }
     for (let index = 0; index < dayLogData.length; index++) {
         let { CREATED_AT, ACU, DAOT } = dayLogData[index]
-        if (CREATED_AT > lwt) {
-            allCU = allCU + ACU
-            MDAOT = MDAOT + DAOT
+        if (CREATED_AT > lmt) {
+            allCU = allCU + parseFloat(ACU)
+            MDAOT = MDAOT + parseFloat(DAOT)
         }
     }
     ACU = (allCU / DATE).toFixed(2)
@@ -309,69 +311,87 @@ function doMonthTask() {
         LOCALE_DATE, MAU, MNU, ACU, MDAOT, NEW_USER
     })
     saveData(PLAYER_DATA_FILE, playerData)
+    logger.info(`[MONTHLY] <上月数据统计> 活跃数(MAU):${MAU} 新增数(MNU):${MNU} 平均在线人数(ACU):${ACU} 平均在线时长(MDAOT):${MDAOT} `)
     dTask.start()
+
 }
 
 
 function onJoin(pl) {
-    CCU += 1
+    CCU = CCU + 1
+    playerList.set(pl.xuid, new Date().getTime())
     if (CCU > PCU) {
+        PCU = CCU
         saveData(DATA_FILE, { RU, PCU })
     }
     let [index, data] = findIndexByXuid(pl.xuid)
     if (data === null) {
         //加载失败
-        logger.warn('用户数据加载失败');
+        logger.warn('[JOIN] 用户数据加载失败');
         //pl.kick("用户数据加载失败，请联系管理员处理");
         return false;
     }
     if (index === null) {
         //玩家数据不存在，增加玩家数据
-        let pdata = new Player(pl.xuid)
+        let login_at = playerList.get(pl.xuid)
+        let pdata = new Player(pl.xuid, login_at)
+
         insertData(PLAYER_DATA_FILE, pdata)
-        RU += 1
-        logger.info(`新增玩家数据(${pl.xuid})成功,已注册用户数量:${RU},当前在线人数:${CCU}`)
+        RU = RU + 1
+        saveData(DATA_FILE, { RU, PCU })
+        logger.info(`[JOIN] 玩家进服数据(${pl.xuid})添加成功 玩家总数(RU):${RU} 当前在线人数(CCU):${CCU} `)
     } else {
         data.last_login_at = new Date().getTime()
         data.updated_at = new Date().getTime()
         updateData(PLAYER_DATA_FILE, data)
-        logger.info(`玩家数据(${pl.xuid})更新成功,已注册用户数量:${RU},当前在线人数:${CCU}`)
+        logger.info(`[JOIN] 玩家进服数据(${pl.xuid})更新成功 玩家总数(RU):${RU} 当前在线人数(CCU):${CCU} `)
     }
 }
 
 function onLeft(pl) {
     CCU -= 1
+    let login_at = playerList.get(pl.xuid)
     let [index, data] = findIndexByXuid(pl.xuid)
     if (data === null) {
         //加载失败
-        logger.warn('用户数据加载失败');
+        logger.warn('[LEFT] 用户数据加载失败');
         //pl.kick("用户数据加载失败，请联系管理员处理");
         return false;
     }
     if (index === null) {
-        logger.warn(`玩家数据(${pl.xuid})不存在,退服数据更新失败,已注册用户数量:${RU},当前在线人数:${CCU}`)
+        logger.warn(`[LEFT] 玩家数据(${pl.xuid})不存在,退服数据更新失败`)
     } else {
-        addPlayTime(data)
+        let add = addPlayTime(index, data, login_at)
+        if (add) {
+            logger.info(`[LEFT] 玩家退服数据(${pl.xuid})更新成功 玩家总数(RU):${RU} 当前在线人数(CCU):${CCU} `)
+        } else {
+            logger.warn(`[LEFT] 玩家退服数据(${pl.xuid})更新失败 玩家总数(RU):${RU} 当前在线人数(CCU):${CCU} `)
+        }
 
-        logger.info(`玩家数据(${pl.xuid})更新成功,已注册用户数量:${RU},当前在线人数:${CCU}`)
     }
 }
 
-function addPlayTime(data) {
-    let { last_login_at } = data
+function addPlayTime(index, data, login_at) {
+    if (typeof login_at === undefined) return false
     let now = new Date().getTime()
-    addTime = now - last_login_at
+    addTime = now - login_at
     data.playtime += addTime
     data.DOT += addTime
     data.WOT += addTime
     data.MOT += addTime
     data.last_logout_at = now
     data.updated_at = now
-    updateData(PLAYER_DATA_FILE, data)
+    return updateData(PLAYER_DATA_FILE, index, data)
 }
 
 init()
 startTask()
+//setTimeout(doWeekTask, 15000)
+
+//setTimeout(doMonthTask, 10000)
+
+
+
 
 mc.listen("onJoin", onJoin)
 mc.listen("onLeft", onLeft)

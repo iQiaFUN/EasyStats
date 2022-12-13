@@ -1,0 +1,24 @@
+{
+  "name": "easystats",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "fs-extra": "^11.1.0",
+    "node-cron": "^3.0.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iQiaFUN/EasyStats.git"
+  },
+  "author": "iQiaFUN",
+  "license": "AGPL-3.0",
+  "bugs": {
+    "url": "https://github.com/iQiaFUN/EasyStats/issues"
+  },
+  "homepage": "https://github.com/iQiaFUN/EasyStats#readme"
+}

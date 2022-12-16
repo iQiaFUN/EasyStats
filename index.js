@@ -7,7 +7,7 @@ const fse = require("fs-extra")
 ll.registerPlugin(
     /* name */ "",
     /* introduction */ "",
-    /* version */[0, 0, 1],
+    /* version */[1, 0, 2],
     /* otherInformation */ {}
 );
 

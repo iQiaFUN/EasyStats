@@ -12,6 +12,11 @@ ll.registerPlugin(
 );
 
 logger.setTitle("EasyStats")
+
+const HOURTIME = 1000 * 60 * 60
+const DAYTIME = 24 * HOURTIME
+const WEEKTIME = 7 * DAYTIME
+
 const DIR = "./plugins/EasyStats"
 const DATA_FILE = "Data.json"
 const DAILY_LOG_FILE = "DayLog.json"
@@ -118,10 +123,10 @@ function findIndexByXuid(xuid) {//玩家是否存在
     return index >= 0 ? [index, playerData[index]] : [null, playerData];
 }
 
-let dTask = cron.schedule(CRON_DAILY, doDayTask,CRON_CONFIG);
+let dTask = cron.schedule(CRON_DAILY, doDayTask, CRON_CONFIG);
 let wTask = cron.schedule(CRON_WEEKLY, doWeekTask, CRON_CONFIG);
 let mTask = cron.schedule(CRON_MONTHLY, doMonthTask, CRON_CONFIG);
-let cuTask = cron.schedule(CRON_ACU, doCUTask,CRON_CONFIG);
+let cuTask = cron.schedule(CRON_ACU, doCUTask, CRON_CONFIG);
 
 class Player {
     constructor(xuid, login_at) {
@@ -168,14 +173,14 @@ function doCUTask() {
 
 function getDate() {
     let now = new Date().getTime()
-    let ydt = now - 1000 * 60 * 60 * 24
-    let lwt = now - 1000 * 60 * 60 * 24 * 7
+    let ydt = now - DAYTIME
+    let lwt = now - WEEKTIME
     let YD = new Date(ydt)
 
     let DAY = YD.getDay()
     let DATE = YD.getDate()
     let LOCALE_DATE = YD.toLocaleDateString()
-    let lmt = now - 1000 * 60 * 60 * 24 * DATE
+    let lmt = now - DAYTIME * DATE
     return {
         now,
         ydt,
@@ -213,7 +218,8 @@ function doDayTask() {
         playerData[index].DOT = 0
     }
     for (let index = 0; index < tmpCUData.length; index++) {
-        allCU = allCU + tmpCUData[index].CCU
+        let { CCU } = tmpCUData[index]
+        allCU += CCU
     }
     ACU = (allCU / DAU).toFixed(2)
     DAOT = (allDOT / DAU).toFixed(2)
@@ -249,7 +255,7 @@ function doWeekTask() {
         }
         if ((last_login_at > lwt) || WOT > 0) {
             WAU += 1
-            allDOT = allDOT + WOT
+            allDOT += WOT
         }
         playerData[index].WOT = 0
 
@@ -257,7 +263,6 @@ function doWeekTask() {
     for (let index = 0; index < dayLogData.length; index++) {
         let { CREATED_AT, ACU, DAOT } = dayLogData[index]
         if (CREATED_AT > lwt) {
-            console.log(22, index)
             allCU = allCU + parseFloat(ACU)
             WDAOT = WDAOT + parseFloat(DAOT)
         }
@@ -318,8 +323,8 @@ function doMonthTask() {
 
 
 function onJoin(pl) {
-    CCU = CCU + 1
     playerList.set(pl.xuid, new Date().getTime())
+    CCU += 1
     if (CCU > PCU) {
         PCU = CCU
         saveData(DATA_FILE, { RU, PCU })
@@ -349,6 +354,9 @@ function onJoin(pl) {
 }
 
 function onLeft(pl) {
+    if (!playerList.has(pl.xuid)) {
+        return
+    }
     CCU -= 1
     let login_at = playerList.get(pl.xuid)
     let [index, data] = findIndexByXuid(pl.xuid)
@@ -384,14 +392,96 @@ function addPlayTime(index, data, login_at) {
     return updateData(PLAYER_DATA_FILE, index, data)
 }
 
+function getPlayerInfo(xuid) {
+    let [index, data] = findIndexByXuid(xuid)
+    let r = data === null || index === null
+    return r ? data : null
+}
+
+function getDayLog(date = null) {
+    let checkDate
+    if (date === null) {
+        let now = new Date().getTime()
+        checkDate = new Date(now - HOURTIME * (24 + 5)).toLocaleDateString()
+    } else {
+        checkDate = date
+    }
+    let dayLogData = load(DAILY_LOG_FILE);
+    if (dayLogData === null) return null
+
+    let index = dayLogData.findIndex((item) => {
+        let xuidExists = item.LOCALE_DATE === checkDate;
+        return xuidExists;
+    })
+    return index >= 0 ? dayLogData[index] : null;
+}
+
+function getWeekLog(from, to = null) {
+    if (typeof from === undefined) {
+        let { lwt } = getDate()
+        from = lwt
+    }
+    let weekLogData = load(WEEKLY_LOG_FILE);
+    if (weekLogData === null) return null
+
+
+    let rt = []
+    weekLogData.forEach((item) => {
+        let { CREATED_AT } = item
+        let c1 = CREATED_AT > from
+        let c2 = CREATED_AT < to
+        let check = to === null ? c1 : c1 && c2
+        if (check) rt.push(item)
+    })
+    return rt
+}
+
+function getMonthLog(from, to = null) {
+    if (typeof from === undefined) {
+        let { lmt } = getDate()
+        from = lmt
+    }
+    let monthLogData = load(MONTHLY_LOG_FILE);
+    if (monthLogData === null) return null
+
+    let rt = []
+    monthLogData.forEach((item) => {
+        let { CREATED_AT } = item
+        let c1 = CREATED_AT > from
+        let c2 = CREATED_AT < to
+        let check = to === null ? c1 : c1 && c2
+        if (check) rt.push(item)
+    })
+    return rt
+}
+function getStats() {
+    return {
+        RU, PCU, CCU,
+        DayStats: getDayLog(),
+        WeekStats: getWeekLog()[0],
+        MonthStats: getMonthLog()[0]
+    }
+}
+
+// function regCMD() {
+    
+// }
+
+
+//导出函数
+ll.export(getStats, "EasyStats", "getStats")
+ll.export(getPlayerInfo, "EasyStats", "getPlayerInfo")
+ll.export(getDayLog, "EasyStats", "getDayLog")
+ll.export(getWeekLog, "EasyStats", "getWeekLog")
+ll.export(getMonthLog, "EasyStats", "getMonthLog")
+
+
+
 init()
 startTask()
 //setTimeout(doWeekTask, 15000)
 
 //setTimeout(doMonthTask, 10000)
-
-
-
 
 mc.listen("onJoin", onJoin)
 mc.listen("onLeft", onLeft)

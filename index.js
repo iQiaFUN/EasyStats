@@ -357,8 +357,10 @@ function onLeft(pl) {
     if (!playerList.has(pl.xuid)) {
         return
     }
-    CCU -= 1
+
     let login_at = playerList.get(pl.xuid)
+    CCU -= 1
+    playerList.delete(pl.xuid)
     let [index, data] = findIndexByXuid(pl.xuid)
     if (data === null) {
         //加载失败
@@ -464,7 +466,7 @@ function getStats() {
 }
 
 // function regCMD() {
-    
+
 // }
 
 

@@ -217,12 +217,16 @@ function doDayTask() {
         }
         playerData[index].DOT = 0
     }
-    for (let index = 0; index < tmpCUData.length; index++) {
+    let len = tmpCUData.length
+    for (let index = 0; index < len; index++) {
         let { CCU } = tmpCUData[index]
         allCU += CCU
     }
-    ACU = (allCU / DAU).toFixed(2)
-    DAOT = (allDOT / DAU).toFixed(2)
+    ACU = len === 0 ? "0.00" : (allCU / len).toFixed(2)
+    DAOT = DAU === 0 ? "0.00" : (allDOT / DAU).toFixed(2)
+    //脑瘫了，我说怎么一直不对
+    //     ACU = (allCU / DAU).toFixed(2)
+    //     DAOT = (allDOT / DAU).toFixed(2)
     insertData(DAILY_LOG_FILE, {
         CREATED_AT: new Date().getTime(),
         LOCALE_DATE, DAU, DNU, ACU, DAOT, NEW_USER
@@ -263,8 +267,8 @@ function doWeekTask() {
     for (let index = 0; index < dayLogData.length; index++) {
         let { CREATED_AT, ACU, DAOT } = dayLogData[index]
         if (CREATED_AT > lwt) {
-            allCU = allCU + parseFloat(ACU)
-            WDAOT = WDAOT + parseFloat(DAOT)
+            allCU = ACU === "NaN" ? allCU : allCU + parseFloat(ACU)
+            WDAOT = DAOT === "NaN" ? WDAOT : WDAOT + parseFloat(DAOT)
         }
     }
     ACU = (allCU / 7).toFixed(2)
@@ -305,8 +309,8 @@ function doMonthTask() {
     for (let index = 0; index < dayLogData.length; index++) {
         let { CREATED_AT, ACU, DAOT } = dayLogData[index]
         if (CREATED_AT > lmt) {
-            allCU = allCU + parseFloat(ACU)
-            MDAOT = MDAOT + parseFloat(DAOT)
+            allCU = ACU === "NaN" ? allCU : allCU + parseFloat(ACU)
+            MDAOT = DAOT === "NaN" ? MDAOT : MDAOT + parseFloat(DAOT)
         }
     }
     ACU = (allCU / DATE).toFixed(2)

@@ -2,12 +2,11 @@ const cron = require('node-cron')
 const fse = require("fs-extra")
 
 //LiteLoaderScript Dev Helper
-/// <reference path="d:\Dev\git\llse/dts/llaids/src/index.d.ts"/> 
 
 ll.registerPlugin(
     /* name */ "",
     /* introduction */ "",
-    /* version */[1, 0, 2],
+    /* version */[1, 0, 3],
     /* otherInformation */ {}
 );
 
@@ -400,70 +399,62 @@ function addPlayTime(index, data, login_at) {
 
 function getPlayerInfo(xuid) {
     let [index, data] = findIndexByXuid(xuid)
-    let r = data === null || index === null
-    return r ? data : null
+
+    if(data === null){
+        return null
+    }else{
+        if(xuid === "all") return data
+        if(index === null) return null
+        return data
+    }
 }
 
-function getDayLog(date = null) {
-    let checkDate
-    if (date === null) {
-        let now = new Date().getTime()
-        checkDate = new Date(now - HOURTIME * (24 + 5)).toLocaleDateString()
-    } else {
-        checkDate = date
+function compare(prop){
+    return function(a,b){
+        let value1 = a[prop]
+        let value2 = b[prop]
+        return value1-value2
     }
+}
+
+function getDayLog(limit = 7) {
     let dayLogData = load(DAILY_LOG_FILE);
     if (dayLogData === null) return null
 
-    let index = dayLogData.findIndex((item) => {
-        let xuidExists = item.LOCALE_DATE === checkDate;
-        return xuidExists;
-    })
-    return index >= 0 ? dayLogData[index] : null;
+    let rt = dayLogData.slice(-limit,)
+    rt.sort(compare('CREATED_AT'))
+    rt.reverse()
+    return rt
 }
 
-function getWeekLog(from, to = null) {
-    if (typeof from === undefined) {
-        let { lwt } = getDate()
-        from = lwt
-    }
+function getWeekLog(limit = 1) {
+
     let weekLogData = load(WEEKLY_LOG_FILE);
     if (weekLogData === null) return null
 
 
-    let rt = []
-    weekLogData.forEach((item) => {
-        let { CREATED_AT } = item
-        let c1 = CREATED_AT > from
-        let c2 = CREATED_AT < to
-        let check = to === null ? c1 : c1 && c2
-        if (check) rt.push(item)
-    })
+    let rt = weekLogData.slice(-limit,)
+
+    rt.sort(compare('CREATED_AT'))
+    rt.reverse()
     return rt
 }
 
-function getMonthLog(from, to = null) {
-    if (typeof from === undefined) {
-        let { lmt } = getDate()
-        from = lmt
-    }
+function getMonthLog(limit = 1) {
+
     let monthLogData = load(MONTHLY_LOG_FILE);
     if (monthLogData === null) return null
 
-    let rt = []
-    monthLogData.forEach((item) => {
-        let { CREATED_AT } = item
-        let c1 = CREATED_AT > from
-        let c2 = CREATED_AT < to
-        let check = to === null ? c1 : c1 && c2
-        if (check) rt.push(item)
-    })
+    let rt = monthLogData.slice(-limit,)
+
+    rt.sort(compare('CREATED_AT'))
+    rt.reverse()
     return rt
 }
 function getStats() {
     return {
         RU, PCU, CCU,
-        DayStats: getDayLog(),
+        DayStats: getDayLog()[0],
         WeekStats: getWeekLog()[0],
         MonthStats: getMonthLog()[0]
     }
